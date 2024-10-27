@@ -77,6 +77,29 @@ def fetch_vendor_contact(project_uuid):
         print(f"Request error: {e}")
         return None
 
+def delete_existing_property(project_uuid, property_name):
+    """Deletes an existing property for a project."""
+    try:
+        response = requests.get(f"{API_BASE_URL}/project/{project_uuid}/property", headers=HEADERS)
+        if response.status_code == 200:
+            properties = response.json()
+            existing_prop = next((p for p in properties if p["propertyName"] == property_name), None)
+
+            if existing_prop and "uuid" in existing_prop:
+                prop_uuid = existing_prop["uuid"]
+                delete_url = f"{API_BASE_URL}/project/{project_uuid}/property/{prop_uuid}"
+                delete_response = requests.delete(delete_url, headers=HEADERS)
+                if delete_response.status_code == 204:
+                    print(f"Deleted existing property '{property_name}' for project {project_uuid}.")
+                else:
+                    print(f"Error deleting property '{property_name}' for project {project_uuid}: {delete_response.status_code}")
+            else:
+                print(f"No existing property found for '{property_name}' in project {project_uuid}.")
+        else:
+            print(f"Error fetching properties for deletion for project {project_uuid}: {response.status_code}")
+    except requests.RequestException as e:
+        print(f"Request error during property deletion: {e}")
+
 def add_or_update_vendor_contact(project_uuid, first_name, last_name, email):
     """Adds or updates vendor contact as project properties."""
     properties = [
@@ -86,6 +109,10 @@ def add_or_update_vendor_contact(project_uuid, first_name, last_name, email):
     ]
 
     for prop in properties:
+        # Delete the existing property to prevent conflicts
+        delete_existing_property(project_uuid, prop["propertyName"])
+
+        # Add the new property
         prop_data = {
             "groupName": "VendorContact",
             "propertyName": prop["propertyName"],
@@ -94,13 +121,14 @@ def add_or_update_vendor_contact(project_uuid, first_name, last_name, email):
         }
 
         try:
-            response = requests.put(
+            response = requests.post(
                 f"{API_BASE_URL}/project/{project_uuid}/property",
                 json=prop_data,
                 headers=HEADERS
             )
+
             if response.status_code in [200, 201]:
-                print(f"Updated property '{prop['propertyName']}' for project {project_uuid}.")
+                print(f"Property '{prop['propertyName']}' successfully updated for project {project_uuid}.")
             else:
                 print(f"Error updating property '{prop['propertyName']}' for project {project_uuid}: {response.status_code}")
         except requests.RequestException as e:
