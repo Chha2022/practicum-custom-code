@@ -1,4 +1,5 @@
 import requests
+import random
 from tabulate import tabulate
 
 # API base URL and authentication
@@ -12,6 +13,10 @@ HEADERS = {
     "Content-Type": "application/json"
 }
 
+# Random names and domains for generating vendor contacts
+COMMON_NAMES = ["Alice", "Bob", "Charlie", "David", "Emma", "Frank", "Grace", "Hannah", "Ivy", "Jack"]
+RANDOM_DOMAINS = ["example.com", "testdomain.com", "mockmail.com", "sample.org", "fakemail.net"]
+
 def list_projects():
     """Fetches and returns the list of projects."""
     try:
@@ -20,7 +25,6 @@ def list_projects():
             return response.json()  # Return project data
         else:
             print(f"Error fetching projects: {response.status_code}")
-            print(response.text)
             return []
     except requests.RequestException as e:
         print(f"Request error: {e}")
@@ -35,51 +39,125 @@ def fetch_risk_score(project_uuid):
             return metrics.get("inheritedRiskScore")  # Return risk score
         else:
             print(f"Error fetching risk score for project {project_uuid}: {response.status_code}")
-            print(response.text)
             return None
     except requests.RequestException as e:
         print(f"Request error: {e}")
         return None
 
-def display_projects_and_risk_scores():
-    """Displays projects and their risk scores in a table."""
+def fetch_critical_vulnerabilities(project_uuid):
+    """Fetches the count of critical vulnerabilities for a given project UUID."""
+    try:
+        response = requests.get(f"{API_BASE_URL}/vulnerability/project/{project_uuid}", headers=HEADERS)
+        if response.status_code == 200:
+            vulnerabilities = response.json()
+            # Filter critical vulnerabilities
+            critical_vulns = [vuln for vuln in vulnerabilities if vuln.get("severity") == "CRITICAL"]
+            return len(critical_vulns)  # Return count of critical vulnerabilities
+        else:
+            print(f"Error fetching vulnerabilities for project {project_uuid}: {response.status_code}")
+            return 0
+    except requests.RequestException as e:
+        print(f"Request error: {e}")
+        return 0
+
+def fetch_vendor_contact(project_uuid):
+    """Fetches vendor contact properties for a given project UUID."""
+    try:
+        response = requests.get(f"{API_BASE_URL}/project/{project_uuid}/property", headers=HEADERS)
+        if response.status_code == 200:
+            properties = response.json()
+            first_name = next((prop["propertyValue"] for prop in properties if prop["propertyName"] == "VendorFirstName"), "N/A")
+            last_name = next((prop["propertyValue"] for prop in properties if prop["propertyName"] == "VendorLastName"), "N/A")
+            email = next((prop["propertyValue"] for prop in properties if prop["propertyName"] == "VendorEmail"), "N/A")
+            return {"first_name": first_name, "last_name": last_name, "email": email}
+        else:
+            print(f"Error fetching vendor contact for project {project_uuid}: {response.status_code}")
+            return None
+    except requests.RequestException as e:
+        print(f"Request error: {e}")
+        return None
+
+def add_or_update_vendor_contact(project_uuid, first_name, last_name, email):
+    """Adds or updates vendor contact as project properties."""
+    properties = [
+        {"propertyName": "VendorFirstName", "propertyValue": first_name},
+        {"propertyName": "VendorLastName", "propertyValue": last_name},
+        {"propertyName": "VendorEmail", "propertyValue": email}
+    ]
+
+    for prop in properties:
+        prop_data = {
+            "groupName": "VendorContact",
+            "propertyName": prop["propertyName"],
+            "propertyValue": prop["propertyValue"],
+            "propertyType": "STRING"
+        }
+
+        try:
+            response = requests.put(
+                f"{API_BASE_URL}/project/{project_uuid}/property",
+                json=prop_data,
+                headers=HEADERS
+            )
+            if response.status_code in [200, 201]:
+                print(f"Updated property '{prop['propertyName']}' for project {project_uuid}.")
+            else:
+                print(f"Error updating property '{prop['propertyName']}' for project {project_uuid}: {response.status_code}")
+        except requests.RequestException as e:
+            print(f"Request error while updating property '{prop['propertyName']}': {e}")
+
+def generate_random_name():
+    """Generates a random common name."""
+    return random.choice(COMMON_NAMES)
+
+def generate_random_email(first_name, last_name):
+    """Generates a random email address."""
+    domain = random.choice(RANDOM_DOMAINS)
+    return f"{first_name.lower()}.{last_name.lower()}@{domain}"
+
+def generate_and_add_vendor_contact():
+    """Generates and adds vendor contact to critical projects."""
+    projects = list_projects()
+
+    for project in projects:
+        project_uuid = project.get("uuid")
+        project_name = project.get("name")
+        risk_score = fetch_risk_score(project_uuid)
+
+        if risk_score and risk_score > 80:  # Consider only critical projects
+            first_name = generate_random_name()
+            last_name = generate_random_name()
+            email = generate_random_email(first_name, last_name)
+            add_or_update_vendor_contact(project_uuid, first_name, last_name, email)
+
+def display_critical_projects_with_vulns_and_vendor():
+    """Displays critical projects with their risk scores, critical vulnerabilities, and vendor contact."""
     projects = list_projects()
     table_data = []
 
     for project in projects:
         project_uuid = project.get("uuid")
         project_name = project.get("name")
-        
-        # Fetch and display the risk score
-        risk_score = fetch_risk_score(project_uuid)
-        table_data.append([project_name, project_uuid, risk_score])
-
-    # Display in tabular format
-    headers = ["Project Name", "UUID", "Risk Score"]
-    print(tabulate(table_data, headers=headers, tablefmt="pretty"))
-
-def display_critical_projects():
-    """Displays only projects with a critical risk score (> 80)."""
-    projects = list_projects()
-    table_data = []
-
-    for project in projects:
-        project_uuid = project.get("uuid")
-        project_name = project.get("name")
-        
-        # Fetch and filter projects based on critical risk score
         risk_score = fetch_risk_score(project_uuid)
 
-        if risk_score and risk_score > 80:  # Only show critical projects
-            table_data.append([project_name, project_uuid, risk_score])
+        if risk_score and risk_score > 80:  # Only consider critical projects
+            critical_vuln_count = fetch_critical_vulnerabilities(project_uuid)
+            vendor_contact = fetch_vendor_contact(project_uuid)
+
+            if vendor_contact:
+                vendor_info = f"{vendor_contact['first_name']} {vendor_contact['last_name']} ({vendor_contact['email']})"
+            else:
+                vendor_info = "N/A"
+
+            table_data.append([project_name, project_uuid, risk_score, critical_vuln_count, vendor_info])
 
     # Display in tabular format
-    headers = ["Project Name", "UUID", "Risk Score"]
+    headers = ["Project Name", "UUID", "Risk Score", "Critical Vulnerabilities", "Vendor Contact"]
     print(tabulate(table_data, headers=headers, tablefmt="pretty"))
 
 if __name__ == "__main__":
-    print("Step 1: Listing all projects and their risk scores...")
-    display_projects_and_risk_scores()
+    print("Generating and adding vendor contact for critical projects...")
+    generate_and_add_vendor_contact()  # Call this function only once
 
-    print("\nStep 2: Listing only critical projects with risk score > 80...")
-    display_critical_projects()
+    print("\nListing critical projects with their risk scores, critical vulnerabilities, and vendor contact...")
+    display_critical_projects_with_vulns_and_vendor()
