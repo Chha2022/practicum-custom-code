@@ -1,49 +1,42 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import json
+import http.server
+import ssl
 
-# Webhook listener settings
-HOST_NAME = "localhost"
-PORT_NUMBER = 8888
+# Webhook Listener Configuration
+HOST = 'localhost'
+PORT = 8888
+API_TOKEN = 'xRb9PqJvNf5sA2wLz7hG0cVeUq1yRnKd'
 
-# Static API token for security
-API_TOKEN = "xRb9PqJvNf5sA2wLz7hG0cVeUq1yRnKd"
-
-class WebhookHandler(BaseHTTPRequestHandler):
+class WebhookHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        # Check for the API token in the headers
-        auth_header = self.headers.get('X-Api-Key')
-        if auth_header != API_TOKEN:
-            self.send_response(403)  # Forbidden
+        # Check for the required API token in headers
+        api_key = self.headers.get('X-Api-Key')
+        if api_key != API_TOKEN:
+            self.send_response(401)  # Unauthorized
             self.end_headers()
-            self.wfile.write(b"Forbidden: Invalid API token")
+            self.wfile.write(b'Unauthorized')
             return
-        
-        # Get content length to read the body of the request
-        content_length = int(self.headers.get('Content-Length', 0))
+
+        # Read the content length
+        content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
-        
-        # Parse the incoming JSON data
-        try:
-            payload = json.loads(post_data)
-            print("\n=== Webhook Received ===")
-            print(json.dumps(payload, indent=4))  # Pretty print JSON payload
-            self.send_response(200)  # OK
-            self.end_headers()
-            self.wfile.write(b"Webhook received successfully")
-        except json.JSONDecodeError:
-            self.send_response(400)  # Bad Request
-            self.end_headers()
-            self.wfile.write(b"Invalid JSON payload")
-    
-    def log_message(self, format, *args):
-        # Override to disable default logging to the console
-        return
 
-def run_server():
-    server_address = (HOST_NAME, PORT_NUMBER)
-    httpd = HTTPServer(server_address, WebhookHandler)
-    print(f"Server running at http://{HOST_NAME}:{PORT_NUMBER}...")
-    httpd.serve_forever()
+        # Log the received data
+        print(f"Received POST request: {post_data.decode('utf-8')}")
 
-if __name__ == "__main__":
-    run_server()
+        # Send a 200 OK response
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'Webhook received successfully')
+
+# Create an HTTP server
+httpd = http.server.HTTPServer((HOST, PORT), WebhookHandler)
+
+# Create an SSL context for HTTPS
+ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+ssl_context.load_cert_chain(certfile="cert.pem", keyfile="key.pem")
+
+# Wrap the server socket with SSL
+httpd.socket = ssl_context.wrap_socket(httpd.socket, server_side=True)
+
+print(f"HTTPS Server running on https://{HOST}:{PORT}")
+httpd.serve_forever()
