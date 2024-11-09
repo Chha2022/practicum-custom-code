@@ -1,6 +1,8 @@
 import http.server
 import json
 import os
+from project_sbom_analyzer import fetch_vendor_contact
+from email_notifier import buffer_event_and_send, flush_buffer  # Import the functions from email_notifier
 
 # Webhook Listener Configuration
 HOST = '127.0.0.1'
@@ -11,15 +13,13 @@ FORMATTED_OUTPUT_FILE = "formatted_events.txt"  # File to save formatted, readab
 # Function to check for existing files and prompt the user
 def handle_existing_files():
     if os.path.exists(RAW_OUTPUT_FILE) or os.path.exists(FORMATTED_OUTPUT_FILE):
-        # Ask the user if they want to delete the existing files
         response = input("Do you want to delete the existing files? (y/n): ").strip().lower()
         if response == 'y':
-            # Delete the files if they exist
             if os.path.exists(RAW_OUTPUT_FILE):
                 os.remove(RAW_OUTPUT_FILE)
             if os.path.exists(FORMATTED_OUTPUT_FILE):
                 os.remove(FORMATTED_OUTPUT_FILE)
-            print("Existing files deleted.")
+            print("Existing files deleted.")y
         else:
             print("Files will be opened in append mode.")
 
@@ -28,34 +28,27 @@ handle_existing_files()
 
 class WebhookHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        # Read the raw byte data from the incoming request
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
 
-        # Attempt to decode the byte data to a UTF-8 string
         try:
             data = post_data.decode('utf-8', errors='replace')  # Replace invalid bytes
         except UnicodeDecodeError:
             print("Failed to decode byte data with UTF-8")
-            self.send_response(400)  # Bad Request
+            self.send_response(400)
             self.end_headers()
             self.wfile.write(b'Invalid character encoding in request')
             return
 
         try:
-            # Parse the JSON data
             json_data = json.loads(data)
-
-            # Save the raw JSON data to a file
             with open(RAW_OUTPUT_FILE, "a", encoding="utf-8") as raw_file:
-                raw_file.write(json.dumps(json_data) + "\n")  # Write each event as a new line
+                raw_file.write(json.dumps(json_data) + "\n")
 
-            # Check if the notification "group" is "NEW_VULNERABLE_DEPENDENCY"
             notification = json_data.get("notification", {})
             group = notification.get("group")
 
             if group == "NEW_VULNERABLE_DEPENDENCY":
-                # Extract and format the project details
                 subject = notification.get("subject", {})
                 project = subject.get("project", {})
                 component = subject.get("component", {})
@@ -66,38 +59,42 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 component_name = component.get("name", "Unknown Component")
                 component_version = component.get("version", "Unknown Version")
 
-                # Format the vulnerabilities for better readability
-                formatted_vulnerabilities = []
-                for vuln in vulnerabilities:
-                    vuln_id = vuln.get("vulnId", "Unknown Vulnerability ID")
-                    severity = vuln.get("severity", "Unknown Severity")
-                    description = vuln.get("description", "No Description Available")
-                    cvssv3_score = vuln.get("cvssv3", "N/A")
+                vendor_contact = fetch_vendor_contact(project_id)
+                contact_email = vendor_contact['email'] if vendor_contact else None
 
-                    formatted_vulnerabilities.append(
-                        f"  - ID: {vuln_id} | Severity: {severity}\n"
-                        f"    CVSSv3 Score: {cvssv3_score}\n"
-                        f"    Description: {description}"
-                    )
+                formatted_vulnerabilities = [
+                    f"ID: {vuln.get('vulnId')} | Severity: {vuln.get('severity')} | Description: {vuln.get('description')}"
+                    for vuln in vulnerabilities
+                ]
 
-                # Create a formatted string with project and vulnerability details
+                # Prepare event data for the email
+                event_data = {
+                    "project_name": project_name,
+                    "project_id": project_id,
+                    "component_name": component_name,
+                    "component_version": component_version,
+                    "vulnerabilities": formatted_vulnerabilities,
+                    "contact_email": contact_email
+                }
+
+                # Buffer the event and send in batches of 20
+                buffer_event_and_send(contact_email, event_data)
+
                 formatted_data = (
                     f"Project Name: {project_name}\n"
                     f"Project ID: {project_id}\n"
                     f"Component: {component_name} (Version: {component_version})\n"
+                    f"Vendor Contact: {vendor_contact}\n"
                     f"Vulnerabilities:\n" + "\n".join(formatted_vulnerabilities) + "\n---\n"
                 )
 
-                # Save the formatted project and vulnerability details to a file
                 with open(FORMATTED_OUTPUT_FILE, "a", encoding="utf-8") as formatted_file:
-                    formatted_file.write(formatted_data)  # Write each formatted entry separated by a line
-
+                    formatted_file.write(formatted_data)
                 print(f"Saved project: {project_name} with ID: {project_id} and vulnerabilities listed")
 
         except json.JSONDecodeError:
-            print("Failed to decode JSON")  # Handle invalid JSON data
+            print("Failed to decode JSON")
 
-        # Respond with a 200 OK status
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b'Webhook received successfully')
@@ -105,4 +102,9 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
 # Create and run the HTTP server
 httpd = http.server.HTTPServer((HOST, PORT), WebhookHandler)
 print(f"HTTP Server running on http://{HOST}:{PORT}")
-httpd.serve_forever()
+
+try:
+    httpd.serve_forever()
+except KeyboardInterrupt:
+    flush_buffer()  # Send any remaining events before shutting down
+    print("Server stopped and buffer flushed.")

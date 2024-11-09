@@ -4,7 +4,7 @@ from tabulate import tabulate
 
 # API base URL and authentication
 API_BASE_URL = "http://localhost:8081/api/v1"
-API_KEY = "odt_tadX3fUlG56Q7vHZVwjDGyi8Hw0dqLmY"
+API_KEY = "odt_0JEMptaanHhm2zpXpKvgsIBOuuFpgYx4"
 
 # Headers for API calls
 HEADERS = {
