@@ -1,7 +1,3 @@
-# Let's update the code in email_notifier.py to ensure that all events are batched into a single email
-
-# Here's the modified version of email_notifier.py to send all vulnerabilities in a single email:
-
 import smtplib
 import json
 from email.mime.multipart import MIMEMultipart
@@ -30,9 +26,6 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
     msg['To'] = contact_email
     msg['Subject'] = "Vulnerability Alerts for Your Project"
 
-    # Total count of vulnerabilities
-    total_vulnerabilities = sum(len(event.get("vulnerabilities", [])) for event in events)
-
     # Format the events in the email body with a styled HTML table
     body = f"""
     <html>
@@ -58,26 +51,30 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
             tr:hover {{
                 background-color: #f1f1f1;
             }}
+            .sr-no {{
+                width: 50px;  /* Fixed width for Sr No column */
+            }}
         </style>
     </head>
     <body>
         <p>Dear {vendor_first_name},</p>
-        <p>You have the following {total_vulnerabilities} new vulnerability alerts for your project(s):</p>
+        <p>You have the following new vulnerability alerts for your project(s):</p>
+        <p>Note: Complete descriptions are available in the attached JSON file.</p>
         <table>
             <tr>
-                <th>Sr. No.</th>
+                <th class="sr-no">Sr No</th>
                 <th>Component</th>
                 <th>Version</th>
                 <th>Vulnerability</th>
                 <th>Severity</th>
+                <th>Description</th>
             </tr>
     """
 
     # Create a JSON object for the attachment
     attachment_data = []
-    sr_number = 1
 
-    for event in events:
+    for idx, event in enumerate(events, 1):
         # Extract the component, version, and vulnerabilities
         component = event.get("component_name", "Unknown Component")
         version = event.get("component_version", "Unknown Version")
@@ -86,21 +83,22 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
             if isinstance(vuln, dict):  # Ensure vuln is a dictionary
                 vuln_id = vuln.get("vulnId", "Unknown ID")
                 severity = vuln.get("severity", "Unknown Severity")
+                description = vuln.get("description", "No description")[:140]  # Truncate to 140 characters
 
-                # Add table row with Sr. No.
+                # Add table row
                 body += f"""
                 <tr>
-                    <td>{sr_number}</td>
+                    <td class="sr-no">{idx}</td>
                     <td>{component}</td>
                     <td>{version}</td>
                     <td>{vuln_id}</td>
                     <td>{severity}</td>
+                    <td>{description}</td>
                 </tr>
                 """
-                sr_number += 1
 
-        # Add the event to the JSON attachment data
-        attachment_data.append(event)
+                # Add the event to the JSON attachment data
+                attachment_data.append(event)
 
     body += """
         </table>
@@ -128,12 +126,12 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
         server.login(GMAIL_USER, GMAIL_PASSWORD)
         server.send_message(msg)
         server.quit()
-        print(f"Email sent to {contact_email} with {total_vulnerabilities} vulnerabilities.")
+        print(f"Email sent to {contact_email} with {len(events)} events.")
     except Exception as e:
         print(f"Failed to send email: {e}")
 
 def buffer_event_and_send(contact_email, vendor_first_name, event_data):
-    """Buffers events and sends them all in a single email."""
+    """Buffers events and sends them in one batch."""
     global event_buffer
     event_buffer.append(event_data)
 
