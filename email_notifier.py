@@ -29,35 +29,81 @@ def send_email_to_vendor(contact_email, events):
     msg['To'] = contact_email
     msg['Subject'] = "Vulnerability Alerts for Your Project"
 
-    # Format the events in the email body
-    body = "Dear Vendor,\n\nYou have the following new vulnerability alerts for your project(s):\n\n"
-    body += "<table border='1' style='border-collapse: collapse; width: 100%;'>"
-    body += "<tr><th>Project</th><th>Component</th><th>Version</th><th>Vulnerability</th></tr>"
+    # Format the events in the email body with a styled HTML table
+    body = """
+    <html>
+    <head>
+        <style>
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+            }
+            th, td {
+                border: 1px solid #ddd;
+                padding: 8px;
+                text-align: left;
+            }
+            th {
+                background-color: #f2f2f2;
+                color: #333;
+            }
+            tr:nth-child(even) {
+                background-color: #f9f9f9;
+            }
+            tr:hover {
+                background-color: #f1f1f1;
+            }
+        </style>
+    </head>
+    <body>
+        <p>Dear Vendor,</p>
+        <p>You have the following new vulnerability alerts for your project(s):</p>
+        <table>
+            <tr>
+                <th>Component</th>
+                <th>Version</th>
+                <th>Group</th>
+                <th>Vulnerability</th>
+                <th>Severity</th>
+            </tr>
+    """
 
     # Create a JSON object for the attachment
     attachment_data = []
 
     for event in events:
-        # Limit the description to 140 characters
-        formatted_vulnerabilities = [
-            f"ID: {vuln['vulnId']} | Severity: {vuln['severity']} | Description: {vuln['description'][:140]}"
-            for vuln in event['vulnerabilities']
-        ]
+        # Extract the component, version, group, and vulnerabilities
+        component = event.get("component_name", "Unknown Component")
+        version = event.get("component_version", "Unknown Version")
+        group = event.get("group", "Unknown Group")
 
-        # Add table row for each event
-        body += f"<tr><td>{event['project_name']}</td>"
-        body += f"<td>{event['component_name']}</td>"
-        body += f"<td>{event['component_version']}</td>"
-        body += "<td><ul>"
-        for vuln in formatted_vulnerabilities:
-            body += f"<li>{vuln}</li>"
-        body += "</ul></td></tr>"
+        for vuln in event.get("vulnerabilities", []):
+            if isinstance(vuln, dict):  # Ensure vuln is a dictionary
+                vuln_id = vuln.get("vulnId", "Unknown ID")
+                severity = vuln.get("severity", "Unknown Severity")
+
+                # Add table row
+                body += f"""
+                <tr>
+                    <td>{component}</td>
+                    <td>{version}</td>
+                    <td>{group}</td>
+                    <td>{vuln_id}</td>
+                    <td>{severity}</td>
+                </tr>
+                """
 
         # Add the event to the JSON attachment data
         attachment_data.append(event)
 
-    body += "</table>"
-    body += "\n\nPlease address these vulnerabilities as soon as possible.\n\nRegards,\nSecurity Team"
+    body += """
+        </table>
+        <p>Please address these vulnerabilities as soon as possible.</p>
+        <p>Regards,<br>Security Team</p>
+    </body>
+    </html>
+    """
 
     # Attach the body to the email
     msg.attach(MIMEText(body, 'html'))
@@ -104,12 +150,14 @@ if __name__ == "__main__":
     default_events = [
         {
             "project_name": "Default Project",
-            "component_name": "Default Component",
-            "component_version": "1.0.0",
+            "component_name": "bcprov-jdk15on",
+            "component_version": "1.62",
+            "group": "org.bouncycastle",
             "vulnerabilities": [
-                {"vulnId": "CVE-2024-12345", "severity": "HIGH", "description": "This is an example vulnerability description that will be truncated to 140 characters."}
+                {"vulnId": "CVE-2020-0187", "severity": "Medium", "description": "Example vulnerability description that may be truncated."},
+                {"vulnId": "CVE-2023-33201", "severity": "Medium", "description": "Another example vulnerability."}
             ],
-            "contact_email": "arun.cs6727@gmail.com"  # Replace with your real email address
+            "contact_email": "arun.cs6727@gmail.com"  # Replace with your email address
         }
     ]
 
