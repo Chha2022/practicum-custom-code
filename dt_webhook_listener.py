@@ -61,7 +61,6 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
 
                 if component_uuid:
                     vulnerability_details[component_uuid] = {
-                        "group": component.get("group", "Unknown Group"),
                         "name": component.get("name", "Unknown Component"),
                         "version": component.get("version", "Unknown Version"),
                         "vulnerability": {
@@ -87,6 +86,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
 
                 vendor_contact = fetch_vendor_contact(project_id)
                 contact_email = vendor_contact['email'] if vendor_contact else None
+                vendor_first_name = vendor_contact['first_name'] if vendor_contact else "Vendor"
 
                 # Enrich the vulnerabilities with additional details if available
                 enriched_vulnerabilities = []
@@ -106,11 +106,11 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 # Prepare event data for the email
                 event_data = {
                     "project_name": project_name,
-                    "project_id": project_id,
                     "component_name": component_name,
                     "component_version": component_version,
                     "vulnerabilities": enriched_vulnerabilities,
-                    "contact_email": contact_email
+                    "contact_email": contact_email,
+                    "vendor_first_name": vendor_first_name
                 }
 
                 # Buffer the event and send in batches of 20
