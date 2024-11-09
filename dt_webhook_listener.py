@@ -5,7 +5,7 @@ import json
 HOST = '127.0.0.1'
 PORT = 8888
 RAW_OUTPUT_FILE = "raw_events.json"  # File to save raw JSON data
-FORMATTED_OUTPUT_FILE = "formatted_events.txt"  # File to save formatted, readable data
+FORMATTED_OUTPUT_FILE = "formatted_events.txt"  # File to save formatted, readable data with vulnerabilities
 
 class WebhookHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
@@ -39,18 +39,41 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 # Extract and format the project details
                 subject = notification.get("subject", {})
                 project = subject.get("project", {})
+                component = subject.get("component", {})
+                vulnerabilities = subject.get("vulnerabilities", [])
 
                 project_name = project.get("name", "Unknown Project")
                 project_id = project.get("uuid", "Unknown ID")
+                component_name = component.get("name", "Unknown Component")
+                component_version = component.get("version", "Unknown Version")
 
-                # Save the formatted project details to a file
-                formatted_data = f"Project Name: {project_name}\nProject ID: {project_id}\n---\n"
+                # Format the vulnerabilities for better readability
+                formatted_vulnerabilities = []
+                for vuln in vulnerabilities:
+                    vuln_id = vuln.get("vulnId", "Unknown Vulnerability ID")
+                    severity = vuln.get("severity", "Unknown Severity")
+                    description = vuln.get("description", "No Description Available")
+                    cvssv3_score = vuln.get("cvssv3", "N/A")
+
+                    formatted_vulnerabilities.append(
+                        f"  - ID: {vuln_id} | Severity: {severity}\n"
+                        f"    CVSSv3 Score: {cvssv3_score}\n"
+                        f"    Description: {description}"
+                    )
+
+                # Create a formatted string with project and vulnerability details
+                formatted_data = (
+                    f"Project Name: {project_name}\n"
+                    f"Project ID: {project_id}\n"
+                    f"Component: {component_name} (Version: {component_version})\n"
+                    f"Vulnerabilities:\n" + "\n".join(formatted_vulnerabilities) + "\n---\n"
+                )
+
+                # Save the formatted project and vulnerability details to a file
                 with open(FORMATTED_OUTPUT_FILE, "a") as formatted_file:
                     formatted_file.write(formatted_data)  # Write each formatted entry separated by a line
 
-                print(f"Saved project: {project_name} with ID: {project_id}")
-            else:
-                print("Notification group is not NEW_VULNERABLE_DEPENDENCY")
+                print(f"Saved project: {project_name} with ID: {project_id} and vulnerabilities listed")
 
         except json.JSONDecodeError:
             print("Failed to decode JSON")  # Handle invalid JSON data
