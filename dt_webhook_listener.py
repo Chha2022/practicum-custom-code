@@ -1,11 +1,30 @@
 import http.server
 import json
+import os
 
 # Webhook Listener Configuration
 HOST = '127.0.0.1'
 PORT = 8888
 RAW_OUTPUT_FILE = "raw_events.json"  # File to save raw JSON data
 FORMATTED_OUTPUT_FILE = "formatted_events.txt"  # File to save formatted, readable data with vulnerabilities
+
+# Function to check for existing files and prompt the user
+def handle_existing_files():
+    if os.path.exists(RAW_OUTPUT_FILE) or os.path.exists(FORMATTED_OUTPUT_FILE):
+        # Ask the user if they want to delete the existing files
+        response = input("Do you want to delete the existing files? (y/n): ").strip().lower()
+        if response == 'y':
+            # Delete the files if they exist
+            if os.path.exists(RAW_OUTPUT_FILE):
+                os.remove(RAW_OUTPUT_FILE)
+            if os.path.exists(FORMATTED_OUTPUT_FILE):
+                os.remove(FORMATTED_OUTPUT_FILE)
+            print("Existing files deleted.")
+        else:
+            print("Files will be opened in append mode.")
+
+# Handle the files based on user input only if the files exist
+handle_existing_files()
 
 class WebhookHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
