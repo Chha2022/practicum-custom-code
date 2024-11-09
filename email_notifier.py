@@ -17,7 +17,7 @@ EVENT_BATCH_SIZE = 20  # Default to 20
 # Store alerts to be sent
 event_buffer = []
 
-def send_email_to_vendor(contact_email, events):
+def send_email_to_vendor(contact_email, vendor_first_name, events):
     """Sends an email to the vendor with a bundled list of events."""
     if not contact_email or not events:
         print("No email or events to send.")
@@ -30,40 +30,39 @@ def send_email_to_vendor(contact_email, events):
     msg['Subject'] = "Vulnerability Alerts for Your Project"
 
     # Format the events in the email body with a styled HTML table
-    body = """
+    body = f"""
     <html>
     <head>
         <style>
-            table {
+            table {{
                 width: 100%;
                 border-collapse: collapse;
                 margin-top: 20px;
-            }
-            th, td {
+            }}
+            th, td {{
                 border: 1px solid #ddd;
                 padding: 8px;
                 text-align: left;
-            }
-            th {
+            }}
+            th {{
                 background-color: #f2f2f2;
                 color: #333;
-            }
-            tr:nth-child(even) {
+            }}
+            tr:nth-child(even) {{
                 background-color: #f9f9f9;
-            }
-            tr:hover {
+            }}
+            tr:hover {{
                 background-color: #f1f1f1;
-            }
+            }}
         </style>
     </head>
     <body>
-        <p>Dear Vendor,</p>
+        <p>Dear {vendor_first_name},</p>
         <p>You have the following new vulnerability alerts for your project(s):</p>
         <table>
             <tr>
                 <th>Component</th>
                 <th>Version</th>
-                <th>Group</th>
                 <th>Vulnerability</th>
                 <th>Severity</th>
             </tr>
@@ -73,10 +72,8 @@ def send_email_to_vendor(contact_email, events):
     attachment_data = []
 
     for event in events:
-        # Extract the component, version, group, and vulnerabilities
         component = event.get("component_name", "Unknown Component")
         version = event.get("component_version", "Unknown Version")
-        group = event.get("group", "Unknown Group")
 
         for vuln in event.get("vulnerabilities", []):
             if isinstance(vuln, dict):  # Ensure vuln is a dictionary
@@ -88,7 +85,6 @@ def send_email_to_vendor(contact_email, events):
                 <tr>
                     <td>{component}</td>
                     <td>{version}</td>
-                    <td>{group}</td>
                     <td>{vuln_id}</td>
                     <td>{severity}</td>
                 </tr>
@@ -127,43 +123,19 @@ def send_email_to_vendor(contact_email, events):
     except Exception as e:
         print(f"Failed to send email: {e}")
 
-def buffer_event_and_send(contact_email, event_data):
+def buffer_event_and_send(contact_email, vendor_first_name, event_data):
     """Buffers events and sends them in batches."""
     global event_buffer
     event_buffer.append(event_data)
 
     if len(event_buffer) >= EVENT_BATCH_SIZE:  # Check if we have enough events in the buffer
-        send_email_to_vendor(contact_email, event_buffer)
+        send_email_to_vendor(contact_email, vendor_first_name, event_buffer)
         event_buffer = []  # Clear the buffer after sending
 
 def flush_buffer():
     """Sends any remaining events in the buffer."""
     if event_buffer:
-        # Use the contact email from the first event in the buffer
         contact_email = event_buffer[0]['contact_email']
-        send_email_to_vendor(contact_email, event_buffer)
+        vendor_first_name = event_buffer[0]['vendor_first_name']
+        send_email_to_vendor(contact_email, vendor_first_name, event_buffer)
         event_buffer.clear()
-
-# Example code to send a test email when running this script directly
-if __name__ == "__main__":
-    # Example event data for testing
-    default_events = [
-        {
-            "project_name": "Default Project",
-            "component_name": "bcprov-jdk15on",
-            "component_version": "1.62",
-            "group": "org.bouncycastle",
-            "vulnerabilities": [
-                {"vulnId": "CVE-2020-0187", "severity": "Medium", "description": "Example vulnerability description that may be truncated."},
-                {"vulnId": "CVE-2023-33201", "severity": "Medium", "description": "Another example vulnerability."}
-            ],
-            "contact_email": "arun.cs6727@gmail.com"  # Replace with your email address
-        }
-    ]
-
-    # Buffer the default event and send
-    for event in default_events:
-        buffer_event_and_send(event["contact_email"], event)
-
-    # Flush any remaining events to ensure the email is sent
-    flush_buffer()
