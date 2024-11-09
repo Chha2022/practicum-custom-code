@@ -20,7 +20,7 @@ SPLUNK_AUTH_TOKEN = "e493377a-7cb6-4616-8e78-aaa9e75db4df"
 vulnerability_details = {}
 all_vulnerabilities = []  # List to accumulate all vulnerability notifications
 email_delay_timer = None
-email_delay_seconds = 60  # Delay in seconds to batch notifications
+email_delay_seconds = 20  # Delay in seconds to batch notifications
 
 # Function to check for existing files and prompt the user
 def handle_existing_files():
