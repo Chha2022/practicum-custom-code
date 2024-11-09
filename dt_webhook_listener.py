@@ -1,6 +1,7 @@
 import http.server
 import json
 import os
+import threading
 import requests  # Import requests to send data to Splunk
 from project_sbom_analyzer import fetch_vendor_contact
 # from email_notifier import buffer_event_and_send, flush_buffer  # Email notifier commented out for now
@@ -18,6 +19,8 @@ SPLUNK_AUTH_TOKEN = "e493377a-7cb6-4616-8e78-aaa9e75db4df"
 # Dictionary to store detailed vulnerability information by component UUID
 vulnerability_details = {}
 all_vulnerabilities = []  # List to accumulate all vulnerability notifications
+email_delay_timer = None
+email_delay_seconds = 60  # Delay in seconds to batch notifications
 
 # Function to check for existing files and prompt the user
 def handle_existing_files():
@@ -69,8 +72,18 @@ def send_to_splunk():
     # Clear the list after sending
     all_vulnerabilities.clear()
 
+def delay_send_to_splunk():
+    """Function to send the accumulated vulnerabilities to Splunk after a delay."""
+    global email_delay_timer
+    if email_delay_timer:
+        email_delay_timer.cancel()  # Cancel any existing timer
+    email_delay_timer = threading.Timer(email_delay_seconds, send_to_splunk)
+    email_delay_timer.start()
+
 class WebhookHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
+        global email_delay_timer
+
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
 
@@ -102,9 +115,14 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 component_name = component.get("name", "Unknown Component")
                 component_version = component.get("version", "Unknown Version")
 
-                vendor_contact = fetch_vendor_contact(project_id)
-                contact_email = vendor_contact['email'] if vendor_contact else "N/A"
-                vendor_first_name = vendor_contact['first_name'] if vendor_contact else "Vendor"
+                try:
+                    vendor_contact = fetch_vendor_contact(project_id)
+                    contact_email = vendor_contact['email'] if vendor_contact else "N/A"
+                    vendor_first_name = vendor_contact['first_name'] if vendor_contact else "Vendor"
+                except Exception as e:
+                    print(f"Error fetching vendor contact for project {project_id}: {e}")
+                    contact_email = "N/A"
+                    vendor_first_name = "Vendor"
 
                 # Accumulate vulnerability notifications
                 for vuln in vulnerabilities:
@@ -143,8 +161,8 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 #     "vendor_first_name": vendor_first_name
                 # })
 
-                # Send all accumulated vulnerabilities to Splunk
-                send_to_splunk()
+                # Trigger the delayed send to Splunk
+                delay_send_to_splunk()
 
         except json.JSONDecodeError:
             print("Failed to decode JSON")
@@ -160,4 +178,7 @@ print(f"HTTP Server running on http://{HOST}:{PORT}")
 try:
     httpd.serve_forever()
 except KeyboardInterrupt:
+    if email_delay_timer:
+        email_delay_timer.cancel()  # Cancel the timer on exit
+    send_to_splunk()  # Send any remaining events before shutting down
     print("Server stopped.")
