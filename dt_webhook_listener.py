@@ -1,19 +1,24 @@
 import http.server
 import json
 import os
-import time
+import threading
 from project_sbom_analyzer import fetch_vendor_contact
 from email_notifier import buffer_event_and_send, flush_buffer
 
 # Webhook Listener Configuration
 HOST = '127.0.0.1'
 PORT = 8888
-RAW_OUTPUT_FILE = "raw_events.json"
-FORMATTED_OUTPUT_FILE = "formatted_events.txt"
+RAW_OUTPUT_FILE = "raw_events.json"  # File to save raw JSON data
+FORMATTED_OUTPUT_FILE = "formatted_events.txt"  # File to save formatted, readable data with vulnerabilities
 
 # Dictionary to store detailed vulnerability information by component UUID
 vulnerability_details = {}
 dependency_notifications = []
+
+# Timer and flag for delaying email notifications
+email_delay_timer = None
+email_delay_seconds = 60  # Delay in seconds to wait for all notifications
+email_ready_to_send = False
 
 # Function to check for existing files and prompt the user
 def handle_existing_files():
@@ -31,13 +36,21 @@ def handle_existing_files():
 # Handle the files based on user input only if the files exist
 handle_existing_files()
 
+def send_email_after_delay():
+    """Function to send an email after the delay."""
+    global email_ready_to_send
+    email_ready_to_send = True
+    flush_buffer()  # Send any remaining events
+
 class WebhookHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
+        global email_delay_timer, email_ready_to_send
+
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
 
         try:
-            data = post_data.decode('utf-8', errors='replace')
+            data = post_data.decode('utf-8', errors='replace')  # Replace invalid bytes
         except UnicodeDecodeError:
             print("Failed to decode byte data with UTF-8")
             self.send_response(400)
@@ -55,6 +68,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
             subject = notification.get("subject", {})
 
             if group == "NEW_VULNERABILITY":
+                # Store detailed vulnerability information
                 component = subject.get("component", {})
                 vulnerability = subject.get("vulnerability", {})
                 component_uuid = component.get("uuid")
@@ -71,9 +85,8 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                     }
 
             elif group == "NEW_VULNERABLE_DEPENDENCY":
+                # Collect dependency notifications
                 dependency_notifications.append(notification)
-                time.sleep(60)  # Wait to collect related events
-
                 subject = notification.get("subject", {})
                 project = subject.get("project", {})
                 component = subject.get("component", {})
@@ -89,6 +102,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 contact_email = vendor_contact['email'] if vendor_contact else None
                 vendor_first_name = vendor_contact['first_name'] if vendor_contact else "Vendor"
 
+                # Enrich the vulnerabilities with additional details if available
                 enriched_vulnerabilities = []
                 if component_uuid and component_uuid in vulnerability_details:
                     vuln_info = vulnerability_details[component_uuid]
@@ -103,6 +117,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                         for vuln in vulnerabilities
                     ]
 
+                # Prepare event data for the email
                 event_data = {
                     "project_name": project_name,
                     "component_name": component_name,
@@ -112,7 +127,30 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                     "vendor_first_name": vendor_first_name
                 }
 
+                # Buffer the event
                 buffer_event_and_send(contact_email, vendor_first_name, event_data)
+
+                # Save the formatted data to the file
+                formatted_vuln_details = "\n".join(
+                    [f"ID: {vuln['vulnId']} | Severity: {vuln['severity']} | Description: {vuln['description']}" for vuln in enriched_vulnerabilities]
+                )
+                formatted_data = (
+                    f"Project Name: {project_name}\n"
+                    f"Component: {component_name} (Version: {component_version})\n"
+                    f"Vendor Contact: {vendor_contact}\n"
+                    f"Vulnerabilities:\n{formatted_vuln_details}\n---\n"
+                )
+
+                with open(FORMATTED_OUTPUT_FILE, "a", encoding="utf-8") as formatted_file:
+                    formatted_file.write(formatted_data)
+                print(f"Saved project: {project_name} with enriched vulnerabilities")
+
+                # Reset and start the email delay timer
+                if email_delay_timer:
+                    email_delay_timer.cancel()  # Cancel any existing timer
+                email_ready_to_send = False
+                email_delay_timer = threading.Timer(email_delay_seconds, send_email_after_delay)
+                email_delay_timer.start()
 
         except json.JSONDecodeError:
             print("Failed to decode JSON")
@@ -121,12 +159,14 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b'Webhook received successfully')
 
-# Run the HTTP server
+# Create and run the HTTP server
 httpd = http.server.HTTPServer((HOST, PORT), WebhookHandler)
 print(f"HTTP Server running on http://{HOST}:{PORT}")
 
 try:
     httpd.serve_forever()
 except KeyboardInterrupt:
-    flush_buffer()
+    if email_delay_timer:
+        email_delay_timer.cancel()  # Cancel the timer on exit
+    flush_buffer()  # Send any remaining events before shutting down
     print("Server stopped and buffer flushed.")

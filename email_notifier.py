@@ -72,6 +72,7 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
     attachment_data = []
 
     for event in events:
+        # Extract the component, version, and vulnerabilities
         component = event.get("component_name", "Unknown Component")
         version = event.get("component_version", "Unknown Version")
 
@@ -139,3 +140,27 @@ def flush_buffer():
         vendor_first_name = event_buffer[0]['vendor_first_name']
         send_email_to_vendor(contact_email, vendor_first_name, event_buffer)
         event_buffer.clear()
+
+# Example code to send a test email when running this script directly
+if __name__ == "__main__":
+    # Example event data for testing
+    default_events = [
+        {
+            "project_name": "Default Project",
+            "component_name": "bcprov-jdk15on",
+            "component_version": "1.62",
+            "vulnerabilities": [
+                {"vulnId": "CVE-2020-0187", "severity": "Medium", "description": "Example vulnerability description that may be truncated."},
+                {"vulnId": "CVE-2023-33201", "severity": "Medium", "description": "Another example vulnerability."}
+            ],
+            "contact_email": "arun.cs6727@gmail.com",  # Replace with your email address
+            "vendor_first_name": "Arun"  # Replace with the vendor's first name
+        }
+    ]
+
+    # Buffer the default event and send
+    for event in default_events:
+        buffer_event_and_send(event["contact_email"], event["vendor_first_name"], event)
+
+    # Flush any remaining events to ensure the email is sent
+    flush_buffer()
