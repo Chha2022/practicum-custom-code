@@ -15,10 +15,9 @@ FORMATTED_OUTPUT_FILE = "formatted_events.txt"  # File to save formatted, readab
 vulnerability_details = {}
 dependency_notifications = []
 
-# Timer and flag for delaying email notifications
+# Timer and delay settings for bundling notifications
 email_delay_timer = None
 email_delay_seconds = 60  # Delay in seconds to wait for all notifications
-email_ready_to_send = False
 
 # Function to check for existing files and prompt the user
 def handle_existing_files():
@@ -38,13 +37,11 @@ handle_existing_files()
 
 def send_email_after_delay():
     """Function to send an email after the delay."""
-    global email_ready_to_send
-    email_ready_to_send = True
-    flush_buffer()  # Send any remaining events
+    flush_buffer()  # Send all accumulated events
 
 class WebhookHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        global email_delay_timer, email_ready_to_send
+        global email_delay_timer
 
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
@@ -127,7 +124,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                     "vendor_first_name": vendor_first_name
                 }
 
-                # Buffer the event
+                # Buffer the event without enforcing a fixed batch size
                 buffer_event_and_send(contact_email, vendor_first_name, event_data)
 
                 # Save the formatted data to the file
@@ -148,7 +145,6 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 # Reset and start the email delay timer
                 if email_delay_timer:
                     email_delay_timer.cancel()  # Cancel any existing timer
-                email_ready_to_send = False
                 email_delay_timer = threading.Timer(email_delay_seconds, send_email_after_delay)
                 email_delay_timer.start()
 

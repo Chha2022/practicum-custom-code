@@ -11,17 +11,17 @@ SMTP_PORT = 587
 GMAIL_USER = "arun.cs6727@gmail.com"  # Replace with your Gmail address
 GMAIL_PASSWORD = "ckhrjpgevldhsxpo"  # Replace with your Gmail app password
 
-# Configurable event batch size
-EVENT_BATCH_SIZE = 20  # Default to 20
-
 # Store alerts to be sent
 event_buffer = []
 
 def send_email_to_vendor(contact_email, vendor_first_name, events):
-    """Sends an email to the vendor with a bundled list of events."""
+    """Sends an email to the vendor with all accumulated events."""
     if not contact_email or not events:
         print("No email or events to send.")
         return
+
+    # Total number of vulnerabilities
+    total_vulnerabilities = sum(len(event.get("vulnerabilities", [])) for event in events)
 
     # Create the email message
     msg = MIMEMultipart()
@@ -58,9 +58,10 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
     </head>
     <body>
         <p>Dear {vendor_first_name},</p>
-        <p>You have the following new vulnerability alerts for your project(s):</p>
+        <p>You have the following {total_vulnerabilities} new vulnerability alerts for your project(s):</p>
         <table>
             <tr>
+                <th>#</th>
                 <th>Component</th>
                 <th>Version</th>
                 <th>Vulnerability</th>
@@ -70,6 +71,7 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
 
     # Create a JSON object for the attachment
     attachment_data = []
+    count = 1  # Counter for numbering vulnerabilities
 
     for event in events:
         # Extract the component, version, and vulnerabilities
@@ -81,15 +83,17 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
                 vuln_id = vuln.get("vulnId", "Unknown ID")
                 severity = vuln.get("severity", "Unknown Severity")
 
-                # Add table row
+                # Add table row with numbering
                 body += f"""
                 <tr>
+                    <td>{count}</td>
                     <td>{component}</td>
                     <td>{version}</td>
                     <td>{vuln_id}</td>
                     <td>{severity}</td>
                 </tr>
                 """
+                count += 1
 
         # Add the event to the JSON attachment data
         attachment_data.append(event)
@@ -120,21 +124,17 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
         server.login(GMAIL_USER, GMAIL_PASSWORD)
         server.send_message(msg)
         server.quit()
-        print(f"Email sent to {contact_email} with {len(events)} events.")
+        print(f"Email sent to {contact_email} with {total_vulnerabilities} vulnerabilities.")
     except Exception as e:
         print(f"Failed to send email: {e}")
 
 def buffer_event_and_send(contact_email, vendor_first_name, event_data):
-    """Buffers events and sends them in batches."""
+    """Buffers events and sends them all together in a single email."""
     global event_buffer
     event_buffer.append(event_data)
 
-    if len(event_buffer) >= EVENT_BATCH_SIZE:  # Check if we have enough events in the buffer
-        send_email_to_vendor(contact_email, vendor_first_name, event_buffer)
-        event_buffer = []  # Clear the buffer after sending
-
 def flush_buffer():
-    """Sends any remaining events in the buffer."""
+    """Sends all accumulated events in the buffer."""
     if event_buffer:
         contact_email = event_buffer[0]['contact_email']
         vendor_first_name = event_buffer[0]['vendor_first_name']
