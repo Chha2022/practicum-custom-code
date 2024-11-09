@@ -19,7 +19,7 @@ def handle_existing_files():
                 os.remove(RAW_OUTPUT_FILE)
             if os.path.exists(FORMATTED_OUTPUT_FILE):
                 os.remove(FORMATTED_OUTPUT_FILE)
-            print("Existing files deleted.")y
+            print("Existing files deleted.")
         else:
             print("Files will be opened in append mode.")
 
