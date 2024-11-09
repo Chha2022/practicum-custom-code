@@ -47,7 +47,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
             json_data = json.loads(data)
 
             # Save the raw JSON data to a file
-            with open(RAW_OUTPUT_FILE, "a") as raw_file:
+            with open(RAW_OUTPUT_FILE, "a", encoding="utf-8") as raw_file:
                 raw_file.write(json.dumps(json_data) + "\n")  # Write each event as a new line
 
             # Check if the notification "group" is "NEW_VULNERABLE_DEPENDENCY"
@@ -89,7 +89,7 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 )
 
                 # Save the formatted project and vulnerability details to a file
-                with open(FORMATTED_OUTPUT_FILE, "a") as formatted_file:
+                with open(FORMATTED_OUTPUT_FILE, "a", encoding="utf-8") as formatted_file:
                     formatted_file.write(formatted_data)  # Write each formatted entry separated by a line
 
                 print(f"Saved project: {project_name} with ID: {project_id} and vulnerabilities listed")
