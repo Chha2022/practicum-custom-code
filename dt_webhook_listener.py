@@ -44,9 +44,12 @@ def send_to_splunk():
         print("No vulnerabilities to send to Splunk.")
         return
 
-    # Prepare the event data for Splunk
+    # Prepare the event data for Splunk with total count
     splunk_event = {
-        "event": {"vulnerabilities": all_vulnerabilities},
+        "event": {
+            "total_vulnerabilities": len(all_vulnerabilities),
+            "vulnerabilities": all_vulnerabilities
+        },
         "sourcetype": "_json",
         "index": "main",
         "source": "http:SBOM_Alert_Notifications"
@@ -71,6 +74,7 @@ def send_to_splunk():
 
     # Clear the list after sending
     all_vulnerabilities.clear()
+
 
 def delay_send_to_splunk():
     """Function to send the accumulated vulnerabilities to Splunk after a delay."""
