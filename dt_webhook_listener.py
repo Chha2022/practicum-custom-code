@@ -17,7 +17,7 @@ dependency_notifications = []
 
 # Timer and delay settings for bundling notifications
 email_delay_timer = None
-email_delay_seconds = 60  # Delay in seconds to wait for all notifications
+email_delay_seconds = 10  # Delay in seconds to wait for all notifications
 
 # Function to check for existing files and prompt the user
 def handle_existing_files():

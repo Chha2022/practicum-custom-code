@@ -11,17 +11,17 @@ SMTP_PORT = 587
 GMAIL_USER = "arun.cs6727@gmail.com"  # Replace with your Gmail address
 GMAIL_PASSWORD = "ckhrjpgevldhsxpo"  # Replace with your Gmail app password
 
+# Configurable event batch size
+EVENT_BATCH_SIZE = 20  # Default to 20
+
 # Store alerts to be sent
 event_buffer = []
 
-def send_email_to_vendor(contact_email, vendor_first_name, events):
-    """Sends an email to the vendor with all accumulated events."""
+def send_email_to_vendor(contact_email, events):
+    """Sends an email to the vendor with a bundled list of events."""
     if not contact_email or not events:
         print("No email or events to send.")
         return
-
-    # Total number of vulnerabilities
-    total_vulnerabilities = sum(len(event.get("vulnerabilities", [])) for event in events)
 
     # Create the email message
     msg = MIMEMultipart()
@@ -30,40 +30,40 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
     msg['Subject'] = "Vulnerability Alerts for Your Project"
 
     # Format the events in the email body with a styled HTML table
-    body = f"""
+    body = """
     <html>
     <head>
         <style>
-            table {{
+            table {
                 width: 100%;
                 border-collapse: collapse;
                 margin-top: 20px;
-            }}
-            th, td {{
+            }
+            th, td {
                 border: 1px solid #ddd;
                 padding: 8px;
                 text-align: left;
-            }}
-            th {{
+            }
+            th {
                 background-color: #f2f2f2;
                 color: #333;
-            }}
-            tr:nth-child(even) {{
+            }
+            tr:nth-child(even) {
                 background-color: #f9f9f9;
-            }}
-            tr:hover {{
+            }
+            tr:hover {
                 background-color: #f1f1f1;
-            }}
+            }
         </style>
     </head>
     <body>
-        <p>Dear {vendor_first_name},</p>
-        <p>You have the following {total_vulnerabilities} new vulnerability alerts for your project(s):</p>
+        <p>Dear Vendor,</p>
+        <p>You have the following new vulnerability alerts for your project(s):</p>
         <table>
             <tr>
-                <th>#</th>
                 <th>Component</th>
                 <th>Version</th>
+                <th>Group</th>
                 <th>Vulnerability</th>
                 <th>Severity</th>
             </tr>
@@ -71,29 +71,28 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
 
     # Create a JSON object for the attachment
     attachment_data = []
-    count = 1  # Counter for numbering vulnerabilities
 
     for event in events:
-        # Extract the component, version, and vulnerabilities
+        # Extract the component, version, group, and vulnerabilities
         component = event.get("component_name", "Unknown Component")
         version = event.get("component_version", "Unknown Version")
+        group = event.get("group", "Unknown Group")
 
         for vuln in event.get("vulnerabilities", []):
             if isinstance(vuln, dict):  # Ensure vuln is a dictionary
                 vuln_id = vuln.get("vulnId", "Unknown ID")
                 severity = vuln.get("severity", "Unknown Severity")
 
-                # Add table row with numbering
+                # Add table row
                 body += f"""
                 <tr>
-                    <td>{count}</td>
                     <td>{component}</td>
                     <td>{version}</td>
+                    <td>{group}</td>
                     <td>{vuln_id}</td>
                     <td>{severity}</td>
                 </tr>
                 """
-                count += 1
 
         # Add the event to the JSON attachment data
         attachment_data.append(event)
@@ -124,21 +123,25 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
         server.login(GMAIL_USER, GMAIL_PASSWORD)
         server.send_message(msg)
         server.quit()
-        print(f"Email sent to {contact_email} with {total_vulnerabilities} vulnerabilities.")
+        print(f"Email sent to {contact_email} with {len(events)} events.")
     except Exception as e:
         print(f"Failed to send email: {e}")
 
 def buffer_event_and_send(contact_email, vendor_first_name, event_data):
-    """Buffers events and sends them all together in a single email."""
+    """Buffers events and sends them in batches."""
     global event_buffer
     event_buffer.append(event_data)
 
+    # No need to check for EVENT_BATCH_SIZE anymore, just send all accumulated events in one email
+    send_email_to_vendor(contact_email, vendor_first_name, event_buffer)
+    event_buffer = []  # Clear the buffer after sending
+
 def flush_buffer():
-    """Sends all accumulated events in the buffer."""
+    """Sends any remaining events in the buffer."""
     if event_buffer:
+        # Use the contact email from the first event in the buffer
         contact_email = event_buffer[0]['contact_email']
-        vendor_first_name = event_buffer[0]['vendor_first_name']
-        send_email_to_vendor(contact_email, vendor_first_name, event_buffer)
+        send_email_to_vendor(contact_email, event_buffer)
         event_buffer.clear()
 
 # Example code to send a test email when running this script directly
@@ -149,18 +152,18 @@ if __name__ == "__main__":
             "project_name": "Default Project",
             "component_name": "bcprov-jdk15on",
             "component_version": "1.62",
+            "group": "org.bouncycastle",
             "vulnerabilities": [
                 {"vulnId": "CVE-2020-0187", "severity": "Medium", "description": "Example vulnerability description that may be truncated."},
                 {"vulnId": "CVE-2023-33201", "severity": "Medium", "description": "Another example vulnerability."}
             ],
-            "contact_email": "arun.cs6727@gmail.com",  # Replace with your email address
-            "vendor_first_name": "Arun"  # Replace with the vendor's first name
+            "contact_email": "arun.cs6727@gmail.com"  # Replace with your email address
         }
     ]
 
     # Buffer the default event and send
     for event in default_events:
-        buffer_event_and_send(event["contact_email"], event["vendor_first_name"], event)
+        buffer_event_and_send(event["contact_email"], event)
 
     # Flush any remaining events to ensure the email is sent
     flush_buffer()

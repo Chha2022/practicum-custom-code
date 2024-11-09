@@ -66,15 +66,9 @@ def fetch_vendor_contact(project_uuid):
         response = requests.get(f"{API_BASE_URL}/project/{project_uuid}/property", headers=HEADERS)
         if response.status_code == 200:
             properties = response.json()
-            first_name = next(
-                (prop.get("propertyValue", "N/A") for prop in properties if prop.get("propertyName") == "VendorFirstName"), "N/A"
-            )
-            last_name = next(
-                (prop.get("propertyValue", "N/A") for prop in properties if prop.get("propertyName") == "VendorLastName"), "N/A"
-            )
-            email = next(
-                (prop.get("propertyValue", "N/A") for prop in properties if prop.get("propertyName") == "VendorEmail"), "N/A"
-            )
+            first_name = next((prop["propertyValue"] for prop in properties if prop["propertyName"] == "VendorFirstName"), "N/A")
+            last_name = next((prop["propertyValue"] for prop in properties if prop["propertyName"] == "VendorLastName"), "N/A")
+            email = next((prop["propertyValue"] for prop in properties if prop["propertyName"] == "VendorEmail"), "N/A")
             return {"first_name": first_name, "last_name": last_name, "email": email}
         else:
             print(f"Error fetching vendor contact for project {project_uuid}: {response.status_code}")
@@ -82,7 +76,6 @@ def fetch_vendor_contact(project_uuid):
     except requests.RequestException as e:
         print(f"Request error: {e}")
         return None
-
 
 def delete_existing_property(project_uuid, property_name):
     """Deletes an existing property for a project."""
