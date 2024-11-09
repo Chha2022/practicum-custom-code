@@ -19,6 +19,8 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
     if not contact_email or not events:
         print("No email or events to send.")
         return
+    
+    total_count = sum(len(event.get("vulnerabilities", [])) for event in events)
 
     # Create the email message
     msg = MIMEMultipart()
@@ -26,7 +28,7 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
     msg['To'] = contact_email
     msg['Subject'] = "Vulnerability Alerts for Your Project"
 
-    # Format the events in the email body with a styled HTML table
+    # Update the body with the total count
     body = f"""
     <html>
     <head>
@@ -59,6 +61,7 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
     <body>
         <p>Dear {vendor_first_name},</p>
         <p>You have the following new vulnerability alerts for your project(s):</p>
+        <p><strong>Total Vulnerabilities: {total_count}</strong></p>
         <p>Note: Complete descriptions are available in the attached JSON file.</p>
         <table>
             <tr>
