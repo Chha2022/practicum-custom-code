@@ -19,8 +19,6 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
     if not contact_email or not events:
         print("No email or events to send.")
         return
-    
-    total_count = sum(len(event.get("vulnerabilities", [])) for event in events)
 
     # Create the email message
     msg = MIMEMultipart()
@@ -28,7 +26,7 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
     msg['To'] = contact_email
     msg['Subject'] = "Vulnerability Alerts for Your Project"
 
-    # Update the body with the total count
+    # Updated email body with SLA information
     body = f"""
     <html>
     <head>
@@ -53,19 +51,21 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
             tr:hover {{
                 background-color: #f1f1f1;
             }}
-            .sr-no {{
-                width: 50px;  /* Fixed width for Sr No column */
-            }}
         </style>
     </head>
     <body>
         <p>Dear {vendor_first_name},</p>
-        <p>You have the following new vulnerability alerts for your project(s):</p>
-        <p><strong>Total Vulnerabilities: {total_count}</strong></p>
-        <p>Note: Complete descriptions are available in the attached JSON file.</p>
+        <p>You have the following new vulnerability alerts for your project(s). Please address these vulnerabilities according to the specified remediation timelines:</p>
+        <ul>
+            <li><strong>Critical:</strong> Remediate within 24 hours.</li>
+            <li><strong>High:</strong> Remediate within 72 hours.</li>
+            <li><strong>Medium:</strong> Remediate within 7 days.</li>
+        </ul>
+        <p>Failure to remediate within these time frames may result in increased risk to your organization and potential escalation of security measures.</p>
+        <p>Please review the details below:</p>
         <table>
             <tr>
-                <th class="sr-no">Sr No</th>
+                <th>Sr No.</th>
                 <th>Component</th>
                 <th>Version</th>
                 <th>Vulnerability</th>
@@ -76,8 +76,9 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
 
     # Create a JSON object for the attachment
     attachment_data = []
+    sr_no = 1  # Counter for serial number
 
-    for idx, event in enumerate(events, 1):
+    for event in events:
         # Extract the component, version, and vulnerabilities
         component = event.get("component_name", "Unknown Component")
         version = event.get("component_version", "Unknown Version")
@@ -91,7 +92,7 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
                 # Add table row
                 body += f"""
                 <tr>
-                    <td class="sr-no">{idx}</td>
+                    <td>{sr_no}</td>
                     <td>{component}</td>
                     <td>{version}</td>
                     <td>{vuln_id}</td>
@@ -99,13 +100,15 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
                     <td>{description}</td>
                 </tr>
                 """
+                sr_no += 1
 
-                # Add the event to the JSON attachment data
-                attachment_data.append(event)
+        # Add the event to the JSON attachment data
+        attachment_data.append(event)
 
     body += """
         </table>
-        <p>Please address these vulnerabilities as soon as possible.</p>
+        <p>For complete details of each vulnerability, please refer to the attached JSON file.</p>
+        <p>Thank you for your prompt attention to these matters.</p>
         <p>Regards,<br>Security Team</p>
     </body>
     </html>
@@ -122,6 +125,7 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
     attachment.add_header('Content-Disposition', 'attachment', filename="vulnerability_alerts.json")
     msg.attach(attachment)
 
+    
     try:
         # Connect to the Gmail SMTP server and send the email
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
