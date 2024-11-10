@@ -18,6 +18,7 @@ SPLUNK_AUTH_TOKEN = "e493377a-7cb6-4616-8e78-aaa9e75db4df"
 
 # Dictionary to store detailed vulnerability information by component UUID
 vulnerability_details = {}
+dependency_notifications = []  # Added definition for the missing variable
 all_vulnerabilities = []  # List to accumulate all vulnerability notifications
 email_delay_timer = None
 email_delay_seconds = 20  # Delay in seconds to batch notifications
