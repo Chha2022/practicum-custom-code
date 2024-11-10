@@ -4,7 +4,7 @@ import os
 import threading
 import requests  # Import requests to send data to Splunk
 from project_sbom_analyzer import fetch_vendor_contact
-from email_notifier import buffer_event_and_send, flush_buffer  # Email notifier
+from email_notifier import buffer_event_and_send, flush_buffer
 
 # Webhook Listener Configuration
 HOST = '127.0.0.1'
@@ -19,8 +19,8 @@ SPLUNK_AUTH_TOKEN = "e493377a-7cb6-4616-8e78-aaa9e75db4df"
 # Dictionary to store detailed vulnerability information by component UUID
 vulnerability_details = {}
 all_vulnerabilities = []  # List to accumulate all vulnerability notifications
-notification_timer = None
-notification_delay_seconds = 20  # Delay in seconds to batch notifications
+email_delay_timer = None
+email_delay_seconds = 20  # Delay in seconds to batch notifications
 
 # Function to check for existing files and prompt the user
 def handle_existing_files():
@@ -75,28 +75,22 @@ def send_to_splunk():
     # Clear the list after sending
     all_vulnerabilities.clear()
 
-def flush_notifications():
-    """Function to send notifications to both email and Splunk after a delay."""
-    # Send notifications to Splunk
-    print("Sending to Splunk...")
-    send_to_splunk()
+def send_notifications():
+    """Sends both Splunk and email notifications."""
+    send_to_splunk()  # Send accumulated vulnerabilities to Splunk
+    flush_buffer()  # Send email notifications
 
-    # Send email notifications
-    print("Sending email notifications...")
-    # Uncomment this block if you want to enable email notifications
-    # flush_buffer()
-
-def delay_notifications():
-    """Function to delay notifications for batching."""
-    global notification_timer
-    if notification_timer:
-        notification_timer.cancel()  # Cancel any existing timer
-    notification_timer = threading.Timer(notification_delay_seconds, flush_notifications)
-    notification_timer.start()
+def delay_send_notifications():
+    """Function to send the accumulated notifications (Splunk and email) after a delay."""
+    global email_delay_timer
+    if email_delay_timer:
+        email_delay_timer.cancel()  # Cancel any existing timer
+    email_delay_timer = threading.Timer(email_delay_seconds, send_notifications)
+    email_delay_timer.start()
 
 class WebhookHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        global notification_timer
+        global email_delay_timer
 
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
@@ -119,9 +113,29 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
             group = notification.get("group")
             subject = notification.get("subject", {})
 
-            if group in ["NEW_VULNERABILITY", "NEW_VULNERABLE_DEPENDENCY"]:
+            if group == "NEW_VULNERABILITY":
+                # Store detailed vulnerability information
                 component = subject.get("component", {})
+                vulnerability = subject.get("vulnerability", {})
+                component_uuid = component.get("uuid")
+
+                if component_uuid:
+                    vulnerability_details[component_uuid] = {
+                        "name": component.get("name", "Unknown Component"),
+                        "version": component.get("version", "Unknown Version"),
+                        "vulnerability": {
+                            "id": vulnerability.get("vulnId", "Unknown ID"),
+                            "severity": vulnerability.get("severity", "Unknown Severity"),
+                            "description": vulnerability.get("description", "No description")
+                        }
+                    }
+
+            elif group == "NEW_VULNERABLE_DEPENDENCY":
+                # Collect dependency notifications
+                dependency_notifications.append(notification)
+                subject = notification.get("subject", {})
                 project = subject.get("project", {})
+                component = subject.get("component", {})
                 vulnerabilities = subject.get("vulnerabilities", [])
 
                 project_name = project.get("name", "Unknown Project")
@@ -129,54 +143,44 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 component_name = component.get("name", "Unknown Component")
                 component_version = component.get("version", "Unknown Version")
 
+                # Fetch vendor contact information
                 try:
                     vendor_contact = fetch_vendor_contact(project_id)
-                    contact_email = vendor_contact['email'] if vendor_contact else "N/A"
+                    contact_email = vendor_contact['email'] if vendor_contact else None
                     vendor_first_name = vendor_contact['first_name'] if vendor_contact else "Vendor"
+                    print(f"Contact Email: {contact_email}, Vendor First Name: {vendor_first_name}")
                 except Exception as e:
                     print(f"Error fetching vendor contact for project {project_id}: {e}")
-                    contact_email = "N/A"
+                    contact_email = None
                     vendor_first_name = "Vendor"
 
-                # Accumulate vulnerability notifications
+                # Enrich the vulnerabilities with additional details if available
+                enriched_vulnerabilities = []
                 for vuln in vulnerabilities:
-                    all_vulnerabilities.append({
-                        "project_name": project_name,
-                        "component_name": component_name,
-                        "component_version": component_version,
+                    enriched_vulnerabilities.append({
                         "vulnId": vuln.get("vulnId", "Unknown ID"),
                         "severity": vuln.get("severity", "Unknown Severity"),
                         "description": vuln.get("description", "No description")[:140]
                     })
 
-                # Save the formatted data to the file
-                formatted_vuln_details = "\n".join(
-                    [f"ID: {vuln.get('vulnId', 'Unknown ID')} | Severity: {vuln.get('severity', 'Unknown Severity')} | Description: {vuln.get('description', 'No description')[:140]}"
-                     for vuln in vulnerabilities]
-                )
-                formatted_data = (
-                    f"Project Name: {project_name}\n"
-                    f"Component: {component_name} (Version: {component_version})\n"
-                    f"Vendor Contact: {vendor_contact}\n"
-                    f"Vulnerabilities:\n{formatted_vuln_details}\n---\n"
-                )
+                # Prepare event data for the email
+                event_data = {
+                    "project_name": project_name,
+                    "component_name": component_name,
+                    "component_version": component_version,
+                    "vulnerabilities": enriched_vulnerabilities,
+                    "contact_email": contact_email,
+                    "vendor_first_name": vendor_first_name
+                }
 
-                with open(FORMATTED_OUTPUT_FILE, "a", encoding="utf-8") as formatted_file:
-                    formatted_file.write(formatted_data)
-                print(f"Saved project: {project_name} with vulnerabilities")
+                # Buffer the event without enforcing a fixed batch size
+                buffer_event_and_send(contact_email, vendor_first_name, event_data)
 
-                # Commented out Email Notification
-                buffer_event_and_send(contact_email, vendor_first_name, {
-                     "project_name": project_name,
-                     "component_name": component_name,
-                     "component_version": component_version,
-                     "vulnerabilities": vulnerabilities,
-                     "contact_email": contact_email,
-                     "vendor_first_name": vendor_first_name
-                 })
+                # Accumulate vulnerability notifications for Splunk
+                all_vulnerabilities.append(event_data)
 
-                # Trigger the delayed notifications
-                delay_notifications()
+                # Trigger the delayed send for both Splunk and email
+                delay_send_notifications()
 
         except json.JSONDecodeError:
             print("Failed to decode JSON")
@@ -192,7 +196,7 @@ print(f"HTTP Server running on http://{HOST}:{PORT}")
 try:
     httpd.serve_forever()
 except KeyboardInterrupt:
-    if notification_timer:
-        notification_timer.cancel()  # Cancel the timer on exit
-    flush_notifications()  # Send any remaining events before shutting down
+    if email_delay_timer:
+        email_delay_timer.cancel()  # Cancel the timer on exit
+    send_notifications()  # Send any remaining notifications before shutting down
     print("Server stopped.")

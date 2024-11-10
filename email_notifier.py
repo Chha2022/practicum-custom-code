@@ -16,8 +16,8 @@ event_buffer = []
 
 def send_email_to_vendor(contact_email, vendor_first_name, events):
     """Sends an email to the vendor with a bundled list of events."""
-    if not contact_email or not events:
-        print("No email or events to send.")
+    if not contact_email or contact_email == "N/A" or not events:
+        print("Invalid email address or no events to send.")
         return
 
     # Create the email message
@@ -125,7 +125,6 @@ def send_email_to_vendor(contact_email, vendor_first_name, events):
     attachment.add_header('Content-Disposition', 'attachment', filename="vulnerability_alerts.json")
     msg.attach(attachment)
 
-    
     try:
         # Connect to the Gmail SMTP server and send the email
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
