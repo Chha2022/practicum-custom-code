@@ -4,7 +4,7 @@ import os
 import threading
 import requests  # Import requests to send data to Splunk
 from project_sbom_analyzer import fetch_vendor_contact
-# from email_notifier import buffer_event_and_send, flush_buffer  # Email notifier commented out for now
+from email_notifier import buffer_event_and_send, flush_buffer  # Email notifier commented out for now
 
 # Webhook Listener Configuration
 HOST = '127.0.0.1'
@@ -156,14 +156,14 @@ class WebhookHandler(http.server.BaseHTTPRequestHandler):
                 print(f"Saved project: {project_name} with vulnerabilities")
 
                 # Commented out Email Notification
-                # buffer_event_and_send(contact_email, vendor_first_name, {
-                #     "project_name": project_name,
-                #     "component_name": component_name,
-                #     "component_version": component_version,
-                #     "vulnerabilities": vulnerabilities,
-                #     "contact_email": contact_email,
-                #     "vendor_first_name": vendor_first_name
-                # })
+                buffer_event_and_send(contact_email, vendor_first_name, {
+                     "project_name": project_name,
+                     "component_name": component_name,
+                     "component_version": component_version,
+                     "vulnerabilities": vulnerabilities,
+                     "contact_email": contact_email,
+                     "vendor_first_name": vendor_first_name
+                 })
 
                 # Trigger the delayed send to Splunk
                 delay_send_to_splunk()
